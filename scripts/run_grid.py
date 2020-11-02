@@ -32,13 +32,18 @@ def worker(task):
             pos=[xzvy[n, 0], 0, xzvy[n, 1]] * u.kpc,
             vel=[0, xzvy[n, 2], 0] * u.km/u.s)
 
-        orbit = pot.integrate_orbit(w0, dt=1., t1=0, t2=256 * 300.*u.Myr,
-                                    Integrator=gi.DOPRI853Integrator)
+        try:
+            orbit = pot.integrate_orbit(w0, dt=1., t1=0, t2=256 * 300.*u.Myr,
+                                        Integrator=gi.DOPRI853Integrator)
+        except RuntimeError:
+            print(f"Worker {i}-{j}: orbit {n} failed")
+            continue
 
         try:
             freqs[:, n, 0] = get_freqs(orbit[:orbit.ntimes // 2])
             freqs[:, n, 1] = get_freqs(orbit[orbit.ntimes // 2:])
         except Exception:
+            print(f"Worker {i}-{j}: orbit {n} - frequencies failed")
             continue
 
     return (i, j), freqs
