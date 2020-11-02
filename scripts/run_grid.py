@@ -21,18 +21,25 @@ def minfunc(vy, H, E0, x, z):
 
 
 def worker(task):
-    (i, j), xzvy, pot = task
+    (i, j), xz, pot, E0 = task
 
     print(f"Worker {i}-{j}: running {j-i} tasks now")
+    H = gp.Hamiltonian(pot)
 
-    norbits = xzvy.shape[0]
+    norbits = xz.shape[0]
     freqs = np.full((3, norbits, 2), np.nan)
+    vys = np.full(norbits, np.nan)
 
     for n in range(norbits):
+        res = root(minfunc, 200., args=(H, E0, xz[n, 0], xz[n, 1]))
+        if not res.success:
+            print(f"Worker {i}-{j}: failed to find vy")
+            continue
 
+        vys[n] = res.x
         w0 = gd.PhaseSpacePosition(
-            pos=[xzvy[n, 0], 0, xzvy[n, 1]] * u.kpc,
-            vel=[0, xzvy[n, 2], 0] * u.km/u.s)
+            pos=[xz[n, 0], 0, xz[n, 1]] * u.kpc,
+            vel=[0, vys[n], 0] * u.km/u.s)
 
         try:
             orbit = pot.integrate_orbit(w0, dt=1., t1=0, t2=256 * 300.*u.Myr,
@@ -74,30 +81,24 @@ def main(pool):
     E0 = H.energy(fiducial_w0)[0].to((u.km/u.s)**2)
 
     # Compute vy value at all grid points
-    _xgrid = np.arange(5, 25+1e-3, 0.1)
-    _zgrid = np.arange(0, 10+1e-3, 0.1)
+    _xgrid = np.arange(5, 25+1e-3, 0.02)
+    _zgrid = np.arange(0, 10+1e-3, 0.02)
     xgrid, zgrid = map(np.ravel, np.meshgrid(_xgrid, _zgrid))
-
-    vygrid = np.full_like(xgrid, np.nan)
-    for n in range(len(xgrid)):
-        res = root(minfunc, 200., args=(H, E0.value, xgrid[n], zgrid[n]))
-        if res.success:
-            vygrid[n] = res.x
-
-    xzvy = np.stack((xgrid, zgrid, vygrid), axis=1)
+    xz = np.stack((xgrid, zgrid), axis=1)
 
     # Create batched tasks to send out to MPI workers
-    tasks = batch_tasks(n_batches=pool.size-1, arr=xzvy, args=(H.potential, ))
+    tasks = batch_tasks(n_batches=pool.size-1, arr=xz,
+                        args=(H.potential, E0.value))
 
     all_freqs = np.full((3, len(xgrid), 2), np.nan)
     for r in pool.map(worker, tasks):
-        (i, j), freqs = r
+        (i, j), freqs, vy = r
         all_freqs[:, i:j] = freqs
 
     results = at.QTable()
-    results['x'] = xzvy[:, 0] * u.kpc
-    results['z'] = xzvy[:, 1] * u.kpc
-    results['vy'] = xzvy[:, 2] * u.km/u.s
+    results['x'] = xz[:, 0] * u.kpc
+    results['z'] = xz[:, 1] * u.kpc
+    results['vy'] = vy * u.km/u.s
     results['freq1'] = all_freqs[..., 0].T * 1/u.Myr
     results['freq2'] = all_freqs[..., 1].T * 1/u.Myr
 
