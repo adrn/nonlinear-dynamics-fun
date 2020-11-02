@@ -55,7 +55,7 @@ def worker(task):
             print(f"Worker {i}-{j}: orbit {n} - frequencies failed")
             continue
 
-    return (i, j), freqs
+    return (i, j), freqs, vys
 
 
 def main(pool):
@@ -91,14 +91,16 @@ def main(pool):
                         args=(H.potential, E0.value))
 
     all_freqs = np.full((3, len(xgrid), 2), np.nan)
+    vys = []
     for r in pool.map(worker, tasks):
         (i, j), freqs, vy = r
         all_freqs[:, i:j] = freqs
+        vys.append(vy)
 
     results = at.QTable()
     results['x'] = xz[:, 0] * u.kpc
     results['z'] = xz[:, 1] * u.kpc
-    results['vy'] = vy * u.km/u.s
+    results['vy'] = np.concatenate(vys) * u.km/u.s
     results['freq1'] = all_freqs[..., 0].T * 1/u.Myr
     results['freq2'] = all_freqs[..., 1].T * 1/u.Myr
 
