@@ -1,4 +1,6 @@
 # Third-party
+from astropy.utils import iers
+iers.conf.auto_download = False
 import astropy.table as at
 import astropy.units as u
 import numpy as np
