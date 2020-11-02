@@ -19,7 +19,9 @@ def minfunc(vy, H, E0, x, z):
 
 
 def worker(task):
-    (i, j), xzvy, H = task
+    (i, j), xzvy, pot = task
+
+    print(f"Worker {i}-{j}: running {j-i} tasks now")
 
     norbits = xzvy.shape[0]
     freqs = np.full((3, norbits, 2), np.nan)
@@ -30,8 +32,8 @@ def worker(task):
             pos=[xzvy[n, 0], 0, xzvy[n, 1]] * u.kpc,
             vel=[0, xzvy[n, 2], 0] * u.km/u.s)
 
-        orbit = H.integrate_orbit(w0, dt=1., t1=0, t2=256 * 300.*u.Myr,
-                                  Integrator=gi.DOPRI853Integrator)
+        orbit = pot.integrate_orbit(w0, dt=1., t1=0, t2=256 * 300.*u.Myr,
+                                    Integrator=gi.DOPRI853Integrator)
 
         try:
             freqs[:, n, 0] = get_freqs(orbit[:orbit.ntimes // 2])
@@ -78,7 +80,7 @@ def main(pool):
     xzvy = np.stack((xgrid, zgrid, vygrid), axis=1)
 
     # Create batched tasks to send out to MPI workers
-    tasks = batch_tasks(n_batches=pool.size-1, arr=xzvy, args=(H, ))
+    tasks = batch_tasks(n_batches=pool.size-1, arr=xzvy, args=(H.potential, ))
 
     all_freqs = np.full((3, len(xgrid), 2), np.nan)
     for r in pool.map(worker, tasks):
