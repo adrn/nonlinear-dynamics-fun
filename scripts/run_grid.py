@@ -11,7 +11,7 @@ import gala.potential as gp
 import gala.integrate as gi
 from gala.units import galactic
 
-from .helpers import get_freqs
+from helpers import get_freqs
 
 
 def minfunc(vy, H, E0, x, z):
