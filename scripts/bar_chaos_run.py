@@ -29,9 +29,14 @@ def get_freqs(orbit):
 
 
 def worker(task):
-    (i, j), w0_w, H, plot_path = task
+    (i, j), w0_w, pot, Om_p, plot_path = task
 
     print(f"Worker {i}-{j}: running {j-i} tasks now")
+    
+    frame = gp.ConstantRotatingFrame(
+        [0, 0, -1] * Om_p.to(u.rad/u.Myr, u.dimensionless_angles()), 
+        units=galactic)
+    H = gp.Hamiltonian(pot, frame)
     
     w0s = gd.PhaseSpacePosition.from_w(w0_w.T, galactic)
     static_frame = gp.StaticFrame(galactic)
@@ -73,12 +78,6 @@ def main(pool):
                                            units=galactic)
     
     Om_p = 40*u.km/u.s/u.kpc
-    frame = gp.ConstantRotatingFrame(
-        [0, 0, -1] * Om_p.to(u.rad/u.Myr, u.dimensionless_angles()), 
-        units=galactic)
-    static_frame = gp.StaticFrame(galactic)
-
-    H = gp.Hamiltonian(pot, frame)
 
     _R_grid = np.linspace(4, 15, 512)
     _vR_grid = np.linspace(-50, 50, 512)
@@ -103,9 +102,9 @@ def main(pool):
     # Create batched tasks to send out to MPI workers
     tasks = batch_tasks(n_batches=max(pool.size-1, 1), 
                         arr=w0_w,
-                        args=(H, plot_path))
+                        args=(pot, Om_p, plot_path))
 
-    all_freqs = np.full((3, len(w0_w), 2), np.nan)
+    all_freqs = np.full((2, len(w0_w), 2), np.nan)
     for r in pool.map(worker, tasks):
         (i, j), freqs = r
         all_freqs[:, i:j] = freqs
@@ -113,8 +112,8 @@ def main(pool):
     results = at.QTable()
     results['R'] = R_grid * u.kpc
     results['vR'] = vR_grid * u.km/u.s
-    results['xyz'] = xyz_grid
-    results['vxyz'] = vxyz_grid
+    results['xyz'] = xyz_grid.T
+    results['vxyz'] = vxyz_grid.T
     results['freq1'] = all_freqs[..., 0].T * u.rad/u.Gyr
     results['freq2'] = all_freqs[..., 1].T * u.rad/u.Gyr
     results.write('bar-orbit-freqs.fits', overwrite=True)
